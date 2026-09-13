@@ -1,0 +1,218 @@
+
+# =================================
+# Build outputs
+# =================================
+# CMake build directory
+build/
+build/*
+out/
+bin/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+*.cmake.*
+.xcode/
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+
+# =================================
+# Executables and libraries
+# =================================
+*.exe
+*.out
+*.app
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+libs/
+libs/*
+
+# =================================
+# IDE and Editor files
+# =================================
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# CLion
+.idea/
+*.iml
+
+# Xcode
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+project.xcworkspace/
+xcuserdata/
+
+# Visual Studio
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.suo
+*.opensdf
+*.sdf
+ipch/
+
+# =================================
+# macOS system files
+# =================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# =================================
+# Dependencies and libraries
+# =================================
+
+# Если скачиваете зависимости автоматически
+deps/
+third_party/
+external/
+vendor/
+
+# =================================
+# Project specific
+# =================================
+# Конфиги с личными настройками
+config.ini
+user_settings.json
+
+# Файлы сохранений игры
+saves/
+*.save
+*.sav
+
+# Логи
+logs/
+*.log
+
+# Временные файлы
+tmp/
+temp/
+*.tmp
+*.temp
+
+# =================================
+# Compiled Object files
+# =================================
+*.slo
+*.lo
+*.o
+*.obj
+
+# =================================
+# Precompiled Headers
+# =================================
+*.gch
+*.pch
+
+# =================================
+# Compiled Dynamic libraries
+# =================================
+*.so
+*.dylib
+*.dll
+
+# =================================
+# Fortran module files
+# =================================
+*.mod
+*.smod
+
+# =================================
+# Compiled Static libraries
+# =================================
+*.lai
+*.la
+*.a
+*.lib
+
+# =================================
+# Debug files
+# =================================
+*.dSYM/
+*.su
+*.idb
+*.pdb
+*.ilk
+
+# =================================
+# Coverage files
+# =================================
+*.gcda
+*.gcno
+*.gcov
+
+# =================================
+# Profiling files
+# =================================
+*.profraw
+*.profdata
+
+# =================================
+# Package files
+# =================================
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# =================================
+# Backup files
+# =================================
+*~
+*.bak
+*.backup
+*.old
+
+# =================================
+# Development files
+# =================================
+# Документация
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Тесты
+test_results/
+coverage/
+
+# Скрипты (если хотите их коммитить - уберите)
+# *.sh
+# *.bat
+# *.ps1
+
+# =================================
+# SFML specific (если нужно)
+# =================================
+# Кэш шейдеров SFML
+sfml-shader-cache/
+
+# =================================
+# CMake user presets
+# =================================
+CMakeUserPresets.json
+CMakePresets.json.user
