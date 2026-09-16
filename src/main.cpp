@@ -38,12 +38,15 @@ struct Particles {
         gy = 9.8f * 100.0f;
         dt = 0.0005f;
     }
+
+    void startPos();
+    void proccessPositions();
+    void render(std::vector<unsigned char>& pixels);
 };
 
 void writePPM(const char* filename, const std::vector<unsigned char>& pixels);
 std::vector<unsigned char>& getPixels();
 void savePPM(std::vector<unsigned char>& pixels);
-void proccessPositions(Particles& pr);
 
 void writePPM(const char* filename, const std::vector<unsigned char>& pixels) {
     FILE* f = fopen(filename, "wb");
@@ -52,14 +55,14 @@ void writePPM(const char* filename, const std::vector<unsigned char>& pixels) {
     fclose(f);
 }
 
-void startPos(Particles& pr) {
-    int cols = (int)std::sqrt(pr.N);
-    float spacing = pr.h * 0.4f;
+void Particles::startPos() {
+    int cols = (int)std::sqrt(N);
+    float spacing = h * 0.4f;
     float x0 = W_px * 0.3f;
     float y0 = H_px * 0.3f;
-    for (int i = 0; i < pr.N; ++i) {
-        pr.x[i] = x0 + (i % cols) * spacing;
-        pr.y[i] = y0 + (i / cols) * spacing;
+    for (int i = 0; i < N; ++i) {
+        x[i] = x0 + (i % cols) * spacing;
+        y[i] = y0 + (i / cols) * spacing;
     }
 }
 
@@ -95,84 +98,84 @@ float ddW(float r2, float h2, float C) {
     return C * (h2 - r2) * (3.0f * r2 - h2); //todo если вязкость будет странной то тут коэф
 }
 
-void proccessPositions(Particles& pr) {
+void Particles::proccessPositions() {
     //плотность
-    for(int i = 0; i < pr.N; i++) {
-        pr.rho[i] = 0.0f;
-        for(int j = 0; j < pr.N; j++) {
-            float dx = pr.x[i] - pr.x[j];
-            float dy = pr.y[i] - pr.y[j];
+    for(int i = 0; i < N; i++) {
+        rho[i] = 0.0f;
+        for(int j = 0; j < N; j++) {
+            float dx = x[i] - x[j];
+            float dy = y[i] - y[j];
             float r2 = dx * dx + dy * dy;
-            pr.rho[i] += pr.mass * coreW(r2, pr.h * pr.h);
+            rho[i] += mass * coreW(r2, h * h);
         } 
     }
 
     //давление
-    for(int i = 0; i < pr.N; i++) {
-        pr.press[i] = pr.k * (pr.rho[i] - pr.rho0);
-        pr.press[i] = std::max(pr.press[i], 0.0f);
+    for(int i = 0; i < N; i++) {
+        press[i] = k * (rho[i] - rho0);
+        press[i] = std::max(press[i], 0.0f);
     }
 
     //силы
-    for(int i = 0; i < pr.N; i++) {
-        pr.ax[i] = 0;
-        pr.ay[i] = 0;
-        for(int j = 0; j < pr.N; j++) {
-            float dx = pr.x[i] - pr.x[j];
-            float dy = pr.y[i] - pr.y[j];
+    for(int i = 0; i < N; i++) {
+        ax[i] = 0;
+        ay[i] = 0;
+        for(int j = 0; j < N; j++) {
+            float dx = x[i] - x[j];
+            float dy = y[i] - y[j];
             float r2 = dx * dx + dy * dy;
-            float h2 = pr.h * pr.h;
+            float h2 = h * h;
             if(r2 < h2) {
-                float dw = dW(r2, h2, pr.C);
-                float rho_ij = 2.0f * pr.rho[i] * pr.rho[j] / (pr.rho[i] + pr.rho[j]);
-                float fp = -pr.mass * (pr.press[i] + pr.press[j]) / (2.0f * rho_ij) * dw;
-                pr.ax[i] += fp * dx;
-                pr.ay[i] += fp * dy;
+                float dw = dW(r2, h2, C);
+                float rho_ij = 2.0f * rho[i] * rho[j] / (rho[i] + rho[j]);
+                float fp = -mass * (press[i] + press[j]) / (2.0f * rho_ij) * dw;
+                ax[i] += fp * dx;
+                ay[i] += fp * dy;
                 //вязкость
-                float fv = pr.mu * pr.mass / pr.rho[j] * ddW(r2, h2, pr.C); 
-                pr.ax[i] += fv * (pr.vx[j] - pr.vx[i]);
-                pr.ay[i] += fv * (pr.vy[j] - pr.vy[i]);
+                float fv = mu * mass / rho[j] * ddW(r2, h2, C); 
+                ax[i] += fv * (vx[j] - vx[i]);
+                ay[i] += fv * (vy[j] - vy[i]);
             }
         }
     }
 
     //интеграция
-    for(int i = 0; i < pr.N; i++) {
-        pr.ax[i] += pr.gx;
-        pr.ay[i] += pr.gy;
+    for(int i = 0; i < N; i++) {
+        ax[i] += gx;
+        ay[i] += gy;
 
         // защита от деления на ~0
-        float invrho = (pr.rho[i] > 1e-6f) ? 1.0f / pr.rho[i] : 0.0f;
-        pr.vx[i] += pr.ax[i] * invrho * pr.dt;
-        pr.vy[i] += pr.ay[i] * invrho * pr.dt;
+        float invrho = (rho[i] > 1e-6f) ? 1.0f / rho[i] : 0.0f;
+        vx[i] += ax[i] * invrho * dt;
+        vy[i] += ay[i] * invrho * dt;
 
         // защита от NaN/inf (на случай, если что-то всё же проскочило)
-        if (!std::isfinite(pr.vx[i])) pr.vx[i] = 0.0f;
-        if (!std::isfinite(pr.vy[i])) pr.vy[i] = 0.0f;
+        if (!std::isfinite(vx[i])) vx[i] = 0.0f;
+        if (!std::isfinite(vy[i])) vy[i] = 0.0f;
 
         // клэмп скорости, чтобы частица не улетела на тысячи пикселей за кадр
         const float VMAX = 2000.0f;
-        pr.vx[i] = std::clamp(pr.vx[i], -VMAX, VMAX);
-        pr.vy[i] = std::clamp(pr.vy[i], -VMAX, VMAX);
+        vx[i] = std::clamp(vx[i], -VMAX, VMAX);
+        vy[i] = std::clamp(vy[i], -VMAX, VMAX);
 
-        pr.x[i] += pr.vx[i] * pr.dt;
-        pr.y[i] += pr.vy[i] * pr.dt;
+        x[i] += vx[i] * dt;
+        y[i] += vy[i] * dt;
     }   
 
     //границы
-    for(int i = 0; i < pr.N; i++) {
-        if (pr.x[i] < 0.0f)  { pr.x[i] = 0.0f;   pr.vx[i] = -pr.vx[i] * 0.5f; }
-        if (pr.x[i] > W_px)  { pr.x[i] = W_px; pr.vx[i] = -pr.vx[i] * 0.5f; }
-        if (pr.y[i] < 0.0f)  { pr.y[i] = 0.0f;   pr.vy[i] = -pr.vy[i] * 0.5f; }
-        if (pr.y[i] > H_px)  { pr.y[i] = H_px; pr.vy[i] = -pr.vy[i] * 0.5f; }
+    for(int i = 0; i < N; i++) {
+        if (x[i] < 0.0f)  { x[i] = 0.0f;   vx[i] = -vx[i] * 0.5f; }
+        if (x[i] > W_px)  { x[i] = W_px;   vx[i] = -vx[i] * 0.5f; }
+        if (y[i] < 0.0f)  { y[i] = 0.0f;   vy[i] = -vy[i] * 0.5f; }
+        if (y[i] > H_px)  { y[i] = H_px;   vy[i] = -vy[i] * 0.5f; }
     }
 }
 
-void render(const Particles& pr, std::vector<unsigned char>& pixels) {
+void Particles::render(std::vector<unsigned char>& pixels) {
     std::fill(pixels.begin(), pixels.end(), 0);
-    for (int i = 0; i < pr.N; ++i) {
-        int px = (int)pr.x[i];
-        int py = (int)pr.y[i];
+    for (int i = 0; i < N; ++i) {
+        int px = (int)x[i];
+        int py = (int)y[i];
         if (px < 0 || px >= W_px || py < 0 || py >= H_px) continue;
         int idx = (py * W_px + px) * 3;
         pixels[idx + 0] = 255;
@@ -182,23 +185,23 @@ void render(const Particles& pr, std::vector<unsigned char>& pixels) {
 }
 
 int main() {
-    Particles particles(500);
+    Particles pr(200);
 
     std::vector<unsigned char> pixels = getPixels();
 
-    startPos(particles);
-    render(particles, pixels);
+    pr.startPos();
+    pr.render(pixels);
     savePPM(pixels);
 
     const int   TOTAL_STEPS = 200000;   // сколько шагов физики
     const int   SAVE_EVERY  = 1000;    // раз в сколько шагов писать кадр
 
     for (int step_id = 0; step_id < TOTAL_STEPS; ++step_id) {
-        proccessPositions(particles);
+        pr.proccessPositions();
 
         // записать кадр
         if (step_id % SAVE_EVERY == 0) {
-            render(particles, pixels);
+            pr.render(pixels);
             savePPM(pixels);
         }
     }
