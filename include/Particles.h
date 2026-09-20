@@ -26,6 +26,10 @@ struct Particles {
     float gy;                      // гравитация по y
     float dt;                      // шаг времени
 
+    int cellSize;
+    int gridW, gridH;
+    std::vector<std::vector<int>> grid;
+
     Particles(int n) : N(n),
         x(n), y(n),
         vx(n), vy(n),
@@ -40,11 +44,17 @@ struct Particles {
         gx = 0.0f;
         gy = 9.8f * 100.0f;
         dt = 0.0005f;
+
+        cellSize = (int)h;   // h = 20 → cellSize = 20
+        gridW = (W_px / cellSize) + 2;   // +2 = запас на границу
+        gridH = (H_px / cellSize) + 2;
+        grid.resize(gridW * gridH);
     }
 
     void startPos();
     void proccessPositions();
     void render(std::vector<unsigned char>& pixels);
+    void buildGrid();
 };
 
 void writePPM(const char* filename, const std::vector<unsigned char>& pixels);
