@@ -3,14 +3,35 @@
 /*------------------------------------------------------------------*/
 
 void Particles::buildGrid() {
-    for (auto& cell : grid) cell.clear();
-    
+    const int nCells = gridW * gridH;
+
+    // 1) обнулить счётчики
+    std::fill(cellCount.begin(), cellCount.end(), 0);
+
+    // 2) посчитать, сколько частиц в каждой ячейке
     for (int i = 0; i < N; ++i) {
-        int cx = (int)(x[i] / cellSize);
-        int cy = (int)(y[i] / cellSize);
-        cx = std::clamp(cx, 0, gridW - 1);
-        cy = std::clamp(cy, 0, gridH - 1);
-        grid[cy * gridW + cx].push_back(i);
+        int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
+        int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
+        cellCount[cy * gridW + cx]++;
+    }
+
+    // 3) префиксные суммы -> начало каждой ячейки
+    int sum = 0;
+    for (int c = 0; c < nCells; ++c) {
+        cellStart[c] = sum;
+        cursor[c]    = sum;   // курсор для раскладки
+        sum         += cellCount[c];
+    }
+
+    // на всякий случай: суммарное количество частиц == N
+    particleIds.resize(sum);
+
+    // 4) разложить id по местам
+    for (int i = 0; i < N; ++i) {
+        int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
+        int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
+        int c  = cy * gridW + cx;
+        particleIds[cursor[c]++] = i;
     }
 }
 
@@ -18,7 +39,7 @@ void Particles::buildGrid() {
 
 void Particles::startPos() {
     int cols = (int)std::sqrt(N);
-    float spacing = h * 0.4f;
+    float spacing = h * 0.2f;
     float x0 = W_px * 0.3f;
     float y0 = H_px * 0.3f;
     for (int i = 0; i < N; ++i) {
@@ -30,68 +51,75 @@ void Particles::startPos() {
 /*------------------------------------------------------------------*/
 
 void Particles::proccessPositions() {
-    const float h2 = h * h;
+    const float h2   = h * h;
     const float VMAX = 2000.0f;
-    
+
     buildGrid();
-    
-    // плотность
+
+    auto forEachNeighbor = [&](int i, int cx, int cy, auto&& fn) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            int ny = cy + dy; if (ny < 0 || ny >= gridH) continue;
+            for (int dx = -1; dx <= 1; ++dx) {
+                int nx = cx + dx; if (nx < 0 || nx >= gridW) continue;
+                int c = ny * gridW + nx;
+                int start = cellStart[c];
+                int end   = start + cellCount[c];
+                for (int k = start; k < end; ++k) {
+                    int j = particleIds[k];
+                    if (i == j) continue;
+                    fn(j);
+                }
+            }
+        }
+    };
+
+    // --- плотность ---
+    #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
         rho[i] = mass * coreW(0.0f, h2);  // самовклад
         int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
         int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
-        for (int dy = -1; dy <= 1; ++dy) {
-            int ny = cy + dy; if (ny < 0 || ny >= gridH) continue;
-            for (int dx = -1; dx <= 1; ++dx) {
-                int nx = cx + dx; if (nx < 0 || nx >= gridW) continue;
-                for (int j : grid[ny * gridW + nx]) {
-                    if (i == j) continue;
-                    float ddx = x[i] - x[j];
-                    float ddy = y[i] - y[j];
-                    float r2 = ddx*ddx + ddy*ddy;
-                    if (r2 >= h2) continue;
-                    rho[i] += mass * coreW(r2, h2);
-                }
-            }
-        }
+        forEachNeighbor(i, cx, cy, [&](int j) {
+            float ddx = x[i] - x[j];
+            float ddy = y[i] - y[j];
+            float r2  = ddx*ddx + ddy*ddy;
+            if (r2 >= h2) return;
+            rho[i] += mass * coreW(r2, h2);
+        });
     }
-    
-    // давление
+
+    // --- давление ---
+    #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
         press[i] = std::max(k * (rho[i] - rho0), 0.0f);
     }
-    
-    // силы
+
+    // --- силы ---
+    #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
         ax[i] = ay[i] = 0.0f;
         int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
         int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
-        for (int dy = -1; dy <= 1; ++dy) {
-            int ny = cy + dy; if (ny < 0 || ny >= gridH) continue;
-            for (int dx = -1; dx <= 1; ++dx) {
-                int nx = cx + dx; if (nx < 0 || nx >= gridW) continue;
-                for (int j : grid[ny * gridW + nx]) {
-                    if (i == j) continue;
-                    float ddx = x[i] - x[j];
-                    float ddy = y[i] - y[j];
-                    float r2 = ddx*ddx + ddy*ddy;
-                    if (r2 >= h2) continue;
-                    
-                    float dw = dW(r2, h2, C);
-                    float rho_ij = 0.5f * (rho[i] + rho[j]);
-                    float fp = -mass * (press[i] + press[j]) / (2.0f * rho_ij) * dw;
-                    ax[i] += fp * ddx;
-                    ay[i] += fp * ddy;
-                    
-                    float fv = mu * mass / rho_ij * ddW(r2, h2, C);
-                    ax[i] += fv * (vx[j] - vx[i]);
-                    ay[i] += fv * (vy[j] - vy[i]);
-                }
-            }
-        }
+        forEachNeighbor(i, cx, cy, [&](int j) {
+            float ddx = x[i] - x[j];
+            float ddy = y[i] - y[j];
+            float r2  = ddx*ddx + ddy*ddy;
+            if (r2 >= h2) return;
+
+            float dw     = dW(r2, h2, C);
+            float rho_ij = 0.5f * (rho[i] + rho[j]);
+            float fp     = -mass * (press[i] + press[j]) / (2.0f * rho_ij) * dw;
+            ax[i] += fp * ddx;
+            ay[i] += fp * ddy;
+
+            float fv = mu * mass / rho_ij * ddW(r2, h2, C);
+            ax[i] += fv * (vx[j] - vx[i]);
+            ay[i] += fv * (vy[j] - vy[i]);
+        });
     }
-    
-    // интеграция + защита
+
+    // --- интеграция + защита ---
+    #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
         ax[i] += gx;
         ay[i] += gy;
@@ -105,8 +133,9 @@ void Particles::proccessPositions() {
         x[i] += vx[i] * dt;
         y[i] += vy[i] * dt;
     }
-    
-    // границы
+
+    // --- границы ---
+    #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
         if (x[i] < 0.0f)  { x[i] = 0.0f;  vx[i] = -vx[i] * 0.5f; }
         if (x[i] > W_px)  { x[i] = W_px;  vx[i] = -vx[i] * 0.5f; }
@@ -160,7 +189,7 @@ void savePPM(std::vector<unsigned char>& pixels)
 
 /*------------------------------------------------------------------*/
 
-float coreW(float r2, float h2) {
+float Particles::coreW(float r2, float h2) {
     if (r2 >= h2) return 0.0f;
     float diff = h2 - r2;
     return (4.0f / (Pi * h2 * h2)) * diff * diff * diff;
@@ -168,7 +197,7 @@ float coreW(float r2, float h2) {
 
 /*------------------------------------------------------------------*/
 
-float dW(float r2, float h2, float C) {
+float Particles::dW(float r2, float h2, float C) {
     if (r2 >= h2) return 0.0f;
     float diff = h2 - r2;
     return C * diff * diff;
@@ -176,7 +205,7 @@ float dW(float r2, float h2, float C) {
 
 /*------------------------------------------------------------------*/
 
-float ddW(float r2, float h2, float C) {
+float Particles::ddW(float r2, float h2, float C) {
     if (r2 >= h2) return 0.0f;
     return C * (h2 - r2) * (3.0f * r2 - h2); //todo если вязкость будет странной то тут коэф
 }

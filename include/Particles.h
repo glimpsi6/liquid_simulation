@@ -10,6 +10,7 @@ constexpr int   H_px    = 600;
 #define Pi 3.14159f 
 
 struct Particles {
+public:
     int N;
     std::vector<float> x, y;       // позиции
     std::vector<float> vx, vy;     // скорости
@@ -28,7 +29,10 @@ struct Particles {
 
     int cellSize;
     int gridW, gridH;
-    std::vector<std::vector<int>> grid;
+    std::vector<int> cellCount;     // сколько частиц в каждой ячейке
+    std::vector<int> cellStart;     // индекс начала ячейки в particleIds
+    std::vector<int> particleIds;   // id частиц, уложенные по ячейкам
+    std::vector<int> cursor;        // временный, для второго прохода
 
     Particles(int n) : N(n),
         x(n), y(n),
@@ -48,20 +52,25 @@ struct Particles {
         cellSize = (int)h;   // h = 20 → cellSize = 20
         gridW = (W_px / cellSize) + 2;   // +2 = запас на границу
         gridH = (H_px / cellSize) + 2;
-        grid.resize(gridW * gridH);
+        cellCount.assign(gridW * gridH, 0);
+        cellStart.assign(gridW * gridH, 0);
+        cursor.assign(gridW * gridH, 0);
+        particleIds.reserve(N);
     }
 
     void startPos();
     void proccessPositions();
     void render(std::vector<unsigned char>& pixels);
+
+private:
+    float coreW(float r2, float h2);
+    float dW(float r2, float h2, float C);
+    float ddW(float r2, float h2, float C);
     void buildGrid();
 };
 
 void writePPM(const char* filename, const std::vector<unsigned char>& pixels);
 std::vector<unsigned char>& getPixels();
 void savePPM(std::vector<unsigned char>& pixels);
-float coreW(float r2, float h2);
-float dW(float r2, float h2, float C);
-float ddW(float r2, float h2, float C);
 
 #endif // PARTICLES_H

@@ -9,7 +9,7 @@ int main() {
     pr.render(pixels);
     savePPM(pixels);
 
-    const int   TOTAL_STEPS = 70000;   // сколько шагов физики
+    const int   TOTAL_STEPS = 300000;   // сколько шагов физики
     const int   SAVE_EVERY  = 1000;    // раз в сколько шагов писать кадр
 
     for (int step_id = 0; step_id < TOTAL_STEPS; ++step_id) {

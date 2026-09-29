@@ -13,5 +13,19 @@ add_executable(sph_sim
     src/Particles.cpp
 )
 
-# find_package(Threads REQUIRED)
-# target_link_libraries(sph_sim PRIVATE Threads::Threads)
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    execute_process(
+        COMMAND brew --prefix libomp
+        OUTPUT_VARIABLE HOMEBREW_LIBOMP_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    set(OpenMP_CXX_FLAGS
+        "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
+    set(OpenMP_CXX_LIB_NAMES "omp")
+    set(OpenMP_omp_LIBRARY
+        "${HOMEBREW_LIBOMP_PREFIX}/lib/libomp.dylib")
+endif()
+
+find_package(OpenMP REQUIRED)
+target_link_libraries(sph_sim PRIVATE OpenMP::OpenMP_CXX)
