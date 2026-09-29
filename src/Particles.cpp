@@ -88,10 +88,16 @@ void Particles::proccessPositions() {
         });
     }
 
+    // float sum = 0 ;
+    // for (int i = 0; i < N; ++i){
+    //     sum += rho[i];
+    // }printf("rho0 = %f\n", sum / N);
+
     // --- давление ---
     #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
-        press[i] = std::max(k * (rho[i] - rho0), 0.0f);
+        // press[i] = std::max(k * (rho[i] - rho0), 0.0f);
+        press[i] = k * (rho[i] - rho0);
     }
 
     // --- силы ---
@@ -108,11 +114,14 @@ void Particles::proccessPositions() {
 
             float dw     = dW(r2, h2, C);
             float rho_ij = 0.5f * (rho[i] + rho[j]);
-            float fp     = -mass * (press[i] + press[j]) / (2.0f * rho_ij) * dw;
+            // float fp = -mass * (press[i] + press[j]) / (2.0f * rho_ij) * dw;
+            float pi_rho2 = press[i] / (rho[i] * rho[i]);
+            float pj_rho2 = press[j] / (rho[j] * rho[j]);
+            float fp = -mass * (pi_rho2 + pj_rho2) * dw;
             ax[i] += fp * ddx;
             ay[i] += fp * ddy;
 
-            float fv = mu * mass / rho_ij * ddW(r2, h2, C);
+            float fv = - mu * mass / rho_ij * ddW(r2, h2, C);
             ax[i] += fv * (vx[j] - vx[i]);
             ay[i] += fv * (vy[j] - vy[i]);
         });

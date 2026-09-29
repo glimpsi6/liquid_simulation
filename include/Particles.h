@@ -39,17 +39,17 @@ public:
         vx(n), vy(n),
         ax(n), ay(n),
         rho(n), press(n) {
-        h = 20.0f; 
-        rho0 = 1.0f;
+        h = 10.0f; 
+        rho0 = 203.0f;
         mass = 1.0f;
-        k = 50.0f;
-        mu = 5.0f;
+        k = 15000.0f;
+        mu = 0.0f;
         C = -24.0f / (Pi * pow(h, 8));
         gx = 0.0f;
-        gy = 9.8f * 100.0f;
-        dt = 0.0005f;
+        gy = 9.8f;
+        dt = 0.01f;
 
-        cellSize = (int)h;   // h = 20 → cellSize = 20
+        cellSize = (int)h;
         gridW = (W_px / cellSize) + 2;   // +2 = запас на границу
         gridH = (H_px / cellSize) + 2;
         cellCount.assign(gridW * gridH, 0);

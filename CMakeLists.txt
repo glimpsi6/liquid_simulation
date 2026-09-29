@@ -29,3 +29,6 @@ endif()
 
 find_package(OpenMP REQUIRED)
 target_link_libraries(sph_sim PRIVATE OpenMP::OpenMP_CXX)
+
+find_package(xsimd REQUIRED CONFIG)
+target_link_libraries(sph_sim PRIVATE xsimd)
