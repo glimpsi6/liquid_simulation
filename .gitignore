@@ -5,6 +5,8 @@
 # CMake build directory
 build/
 build/*
+build-asan/
+build-asan/*
 out/
 bin/
 CMakeFiles/

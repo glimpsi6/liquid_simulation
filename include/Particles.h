@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <vector>
 #include <algorithm>
+#include <filesystem>
 
 constexpr int   W_px    = 800;
 constexpr int   H_px    = 600;
@@ -41,7 +42,7 @@ public:
         rho(n), press(n) {
         h = 10.0f; 
         rho0 = 203.0f;
-        mass = 1.0f;
+        mass = 0.5f;
         k = 15000.0f;
         mu = 0.0f;
         C = -24.0f / (Pi * pow(h, 8));

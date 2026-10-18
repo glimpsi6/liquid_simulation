@@ -5,17 +5,17 @@
 void Particles::buildGrid() {
     const int nCells = gridW * gridH;
 
-    // 1) обнулить счётчики
+    // обнулить счётчики
     std::fill(cellCount.begin(), cellCount.end(), 0);
 
-    // 2) посчитать, сколько частиц в каждой ячейке
+    // посчитать, сколько частиц в каждой ячейке
     for (int i = 0; i < N; ++i) {
         int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
         int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
         cellCount[cy * gridW + cx]++;
     }
 
-    // 3) префиксные суммы -> начало каждой ячейки
+    // префиксные суммы -> начало каждой ячейки
     int sum = 0;
     for (int c = 0; c < nCells; ++c) {
         cellStart[c] = sum;
@@ -26,7 +26,7 @@ void Particles::buildGrid() {
     // на всякий случай: суммарное количество частиц == N
     particleIds.resize(sum);
 
-    // 4) разложить id по местам
+    // разложить id по местам
     for (int i = 0; i < N; ++i) {
         int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
         int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
@@ -73,30 +73,21 @@ void Particles::proccessPositions() {
         }
     };
 
-    // --- плотность ---
+    // --- плотность и давление ---
     #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
-        rho[i] = mass * coreW(0.0f, h2);  // самовклад
+        const float xi = x[i], yi = y[i];
+        float rhoi = mass * coreW(0.0f, h2); // самовклад
         int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
         int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
         forEachNeighbor(i, cx, cy, [&](int j) {
-            float ddx = x[i] - x[j];
-            float ddy = y[i] - y[j];
+            float ddx = xi - x[j];
+            float ddy = yi - y[j];
             float r2  = ddx*ddx + ddy*ddy;
             if (r2 >= h2) return;
-            rho[i] += mass * coreW(r2, h2);
+            rhoi += mass * coreW(r2, h2);
         });
-    }
-
-    // float sum = 0 ;
-    // for (int i = 0; i < N; ++i){
-    //     sum += rho[i];
-    // }printf("rho0 = %f\n", sum / N);
-
-    // --- давление ---
-    #pragma omp parallel for
-    for (int i = 0; i < N; ++i) {
-        // press[i] = std::max(k * (rho[i] - rho0), 0.0f);
+        rho[i]   = rhoi;
         press[i] = k * (rho[i] - rho0);
     }
 
@@ -106,24 +97,25 @@ void Particles::proccessPositions() {
         ax[i] = ay[i] = 0.0f;
         int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
         int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
+        const float xi = x[i], yi = y[i], vxi = vx[i], vyi = vy[i];
+        const float rhoi = rho[i];
+        float pi_rho2 = press[i] / (rhoi * rhoi);
         forEachNeighbor(i, cx, cy, [&](int j) {
-            float ddx = x[i] - x[j];
-            float ddy = y[i] - y[j];
+            float ddx = xi - x[j];
+            float ddy = yi - y[j];
             float r2  = ddx*ddx + ddy*ddy;
             if (r2 >= h2) return;
 
             float dw     = dW(r2, h2, C);
-            float rho_ij = 0.5f * (rho[i] + rho[j]);
-            // float fp = -mass * (press[i] + press[j]) / (2.0f * rho_ij) * dw;
-            float pi_rho2 = press[i] / (rho[i] * rho[i]);
+            float rho_ij = 0.5f * (rhoi + rho[j]);
             float pj_rho2 = press[j] / (rho[j] * rho[j]);
             float fp = -mass * (pi_rho2 + pj_rho2) * dw;
             ax[i] += fp * ddx;
             ay[i] += fp * ddy;
 
             float fv = - mu * mass / rho_ij * ddW(r2, h2, C);
-            ax[i] += fv * (vx[j] - vx[i]);
-            ay[i] += fv * (vy[j] - vy[i]);
+            ax[i] += fv * (vx[j] - vxi);
+            ay[i] += fv * (vy[j] - vyi);
         });
     }
 
@@ -171,10 +163,20 @@ void Particles::render(std::vector<unsigned char>& pixels) {
 /*------------------------------------------------------------------*/
 
 void writePPM(const char* filename, const std::vector<unsigned char>& pixels) {
-    FILE* f = fopen(filename, "wb");
+    namespace fs = std::filesystem;
+    fs::path p(filename);
+    if (p.has_parent_path()) fs::create_directories(p.parent_path());
+
+    FILE* f = std::fopen(filename, "wb");
+    if (!f) {
+        std::fprintf(stderr, "fopen('%s') failed: %s (cwd: %s)\n",
+                     filename, std::strerror(errno), fs::current_path().c_str());
+        return;
+    }
+
     fprintf(f, "P6\n%d %d\n255\n", W_px, H_px);
     fwrite(pixels.data(), 1, pixels.size(), f);
-    fclose(f);
+    std::fclose(f);
 }
 
 /*------------------------------------------------------------------*/
