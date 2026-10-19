@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <filesystem>
+#include <cassert>
 
 constexpr int   W_px    = 800;
 constexpr int   H_px    = 600;
@@ -30,10 +31,11 @@ public:
 
     int cellSize;
     int gridW, gridH;
-    std::vector<int> cellCount;     // сколько частиц в каждой ячейке
-    std::vector<int> cellStart;     // индекс начала ячейки в particleIds
-    std::vector<int> particleIds;   // id частиц, уложенные по ячейкам
-    std::vector<int> cursor;        // временный, для второго прохода
+    float invCellSize, maxCx, maxCy;
+    std::vector<float> x2, y2, vx2, vy2;   // размер N
+    std::vector<int>   cellStart;          // размер nCells + 1
+    std::vector<int>   cursor;             // размер nCells
+    std::vector<int>   cellOf, dest;       // размер N
 
     Particles(int n) : N(n),
         x(n), y(n),
@@ -53,10 +55,17 @@ public:
         cellSize = (int)h;
         gridW = (W_px / cellSize) + 2;   // +2 = запас на границу
         gridH = (H_px / cellSize) + 2;
-        cellCount.assign(gridW * gridH, 0);
-        cellStart.assign(gridW * gridH, 0);
-        cursor.assign(gridW * gridH, 0);
-        particleIds.reserve(N);
+        const int nCells = gridW * gridH;
+        cellStart.assign(nCells + 1, 0);
+        cursor.assign(nCells, 0);
+        cellOf.assign(n, 0);
+        dest.assign(n, 0);
+        x2.assign(n, 0.0f);  y2.assign(n, 0.0f);
+        vx2.assign(n, 0.0f); vy2.assign(n, 0.0f);
+
+        invCellSize = 1.0f / cellSize;  
+        maxCx = float(gridW - 1);  
+        maxCy = float(gridH - 1);
     }
 
     void startPos();
@@ -67,6 +76,7 @@ private:
     float coreW(float r2, float h2);
     float dW(float r2, float h2, float C);
     float ddW(float r2, float h2, float C);
+    int cellIndex(float px, float py) const;
     void buildGrid();
 };
 

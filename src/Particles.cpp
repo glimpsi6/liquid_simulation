@@ -2,37 +2,44 @@
 
 /*------------------------------------------------------------------*/
 
+int Particles::cellIndex(float px, float py) const {
+    float fx = std::max(0.0f, px * invCellSize);
+    float fy = std::max(0.0f, py * invCellSize);
+    fx = std::min(fx, maxCx);
+    fy = std::min(fy, maxCy);
+    return int(fy) * gridW + int(fx); 
+}
+
 void Particles::buildGrid() {
     const int nCells = gridW * gridH;
 
-    // обнулить счётчики
-    std::fill(cellCount.begin(), cellCount.end(), 0);
-
-    // посчитать, сколько частиц в каждой ячейке
+    // Гистограмма: сколько частиц в каждой ячейке
+    std::fill(cellStart.begin(), cellStart.end(), 0); 
     for (int i = 0; i < N; ++i) {
-        int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
-        int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
-        cellCount[cy * gridW + cx]++;
+        const int c = cellIndex(x[i], y[i]);
+        cellOf[i] = c;                                  
+        ++cellStart[c + 1];
     }
 
-    // префиксные суммы -> начало каждой ячейки
-    int sum = 0;
-    for (int c = 0; c < nCells; ++c) {
-        cellStart[c] = sum;
-        cursor[c]    = sum;   // курсор для раскладки
-        sum         += cellCount[c];
-    }
+    // Префиксные суммы на месте
+    for (int c = 0; c < nCells; ++c)
+        cellStart[c + 1] += cellStart[c];
+    assert(cellStart[nCells] == N); // каждая частица попала ровно в одну ячейку
 
-    // на всякий случай: суммарное количество частиц == N
-    particleIds.resize(sum);
+    // Курсоры и новое место каждой частицы
+    std::copy_n(cellStart.begin(), nCells, cursor.begin());
+    for (int i = 0; i < N; ++i)
+        dest[i] = cursor[cellOf[i]]++;  
 
-    // разложить id по местам
+    // Физическая перестановка данных
+    #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
-        int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
-        int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
-        int c  = cy * gridW + cx;
-        particleIds[cursor[c]++] = i;
+        const int d = dest[i];
+        x2[d]  = x[i];   y2[d]  = y[i];
+        vx2[d] = vx[i];  vy2[d] = vy[i];
     }
+    std::swap(x, x2);   std::swap(y, y2);
+    std::swap(vx, vx2); std::swap(vy, vy2);
 }
 
 /*------------------------------------------------------------------*/
@@ -56,23 +63,6 @@ void Particles::proccessPositions() {
 
     buildGrid();
 
-    auto forEachNeighbor = [&](int i, int cx, int cy, auto&& fn) {
-        for (int dy = -1; dy <= 1; ++dy) {
-            int ny = cy + dy; if (ny < 0 || ny >= gridH) continue;
-            for (int dx = -1; dx <= 1; ++dx) {
-                int nx = cx + dx; if (nx < 0 || nx >= gridW) continue;
-                int c = ny * gridW + nx;
-                int start = cellStart[c];
-                int end   = start + cellCount[c];
-                for (int k = start; k < end; ++k) {
-                    int j = particleIds[k];
-                    if (i == j) continue;
-                    fn(j);
-                }
-            }
-        }
-    };
-
     // --- плотность и давление ---
     #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
@@ -80,13 +70,20 @@ void Particles::proccessPositions() {
         float rhoi = mass * coreW(0.0f, h2); // самовклад
         int cx = std::clamp((int)(x[i] / cellSize), 0, gridW - 1);
         int cy = std::clamp((int)(y[i] / cellSize), 0, gridH - 1);
-        forEachNeighbor(i, cx, cy, [&](int j) {
-            float ddx = xi - x[j];
-            float ddy = yi - y[j];
-            float r2  = ddx*ddx + ddy*ddy;
-            if (r2 >= h2) return;
-            rhoi += mass * coreW(r2, h2);
-        });
+        for (int ry = -1; ry <= 1; ++ry) {
+            const int ny = cy + ry;
+            if (ny < 0 || ny >= gridH) continue;
+            const int c0 = ny * gridW + std::max(cx - 1, 0);
+            const int c1 = ny * gridW + std::min(cx + 1, gridW - 1);
+            for (int j = cellStart[c0]; j < cellStart[c1 + 1]; ++j) {   // одна непрерывная полоса из 1–3 ячеек
+                if (j == i) continue;
+                float ddx = xi - x[j];
+                float ddy = yi - y[j];
+                float r2  = ddx*ddx + ddy*ddy;
+                if (r2 >= h2) continue;
+                rhoi += mass * coreW(r2, h2);
+            }
+        }
         rho[i]   = rhoi;
         press[i] = k * (rho[i] - rho0);
     }
@@ -100,23 +97,31 @@ void Particles::proccessPositions() {
         const float xi = x[i], yi = y[i], vxi = vx[i], vyi = vy[i];
         const float rhoi = rho[i];
         float pi_rho2 = press[i] / (rhoi * rhoi);
-        forEachNeighbor(i, cx, cy, [&](int j) {
-            float ddx = xi - x[j];
-            float ddy = yi - y[j];
-            float r2  = ddx*ddx + ddy*ddy;
-            if (r2 >= h2) return;
+        
+        for (int ry = -1; ry <= 1; ++ry) {
+            const int ny = cy + ry;
+            if (ny < 0 || ny >= gridH) continue;
+            const int c0 = ny * gridW + std::max(cx - 1, 0);
+            const int c1 = ny * gridW + std::min(cx + 1, gridW - 1);
+            for (int j = cellStart[c0]; j < cellStart[c1 + 1]; ++j) {   // одна непрерывная полоса из 1–3 ячеек
+                if (j == i) continue;
+                float ddx = xi - x[j];
+                float ddy = yi - y[j];
+                float r2  = ddx*ddx + ddy*ddy;
+                if (r2 >= h2) continue;
 
-            float dw     = dW(r2, h2, C);
-            float rho_ij = 0.5f * (rhoi + rho[j]);
-            float pj_rho2 = press[j] / (rho[j] * rho[j]);
-            float fp = -mass * (pi_rho2 + pj_rho2) * dw;
-            ax[i] += fp * ddx;
-            ay[i] += fp * ddy;
+                float dw     = dW(r2, h2, C);
+                float rho_ij = 0.5f * (rhoi + rho[j]);
+                float pj_rho2 = press[j] / (rho[j] * rho[j]);
+                float fp = -mass * (pi_rho2 + pj_rho2) * dw;
+                ax[i] += fp * ddx;
+                ay[i] += fp * ddy;
 
-            float fv = - mu * mass / rho_ij * ddW(r2, h2, C);
-            ax[i] += fv * (vx[j] - vxi);
-            ay[i] += fv * (vy[j] - vyi);
-        });
+                float fv = - mu * mass / rho_ij * ddW(r2, h2, C);
+                ax[i] += fv * (vx[j] - vxi);
+                ay[i] += fv * (vy[j] - vyi);
+            }
+        }
     }
 
     // --- интеграция + защита ---
