@@ -1,7 +1,7 @@
 #include "Particles.h"
 
 int main() {
-    Particles pr(10000);
+    Particles pr(103);
 
     std::vector<unsigned char> pixels = getPixels();
 

@@ -10,6 +10,8 @@ int Particles::cellIndex(float px, float py) const {
     return int(fy) * gridW + int(fx); 
 }
 
+/*------------------------------------------------------------------*/
+
 void Particles::buildGrid() {
     const int nCells = gridW * gridH;
 
